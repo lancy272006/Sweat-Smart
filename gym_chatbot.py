@@ -1,79 +1,47 @@
-from langchain_community.document_loaders import TextLoader
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain.chat_models import ChatOpenAI
-from langchain.chains import RetrievalQA
-import os
+import streamlit as st
+import requests
 
-# -------------------------------
-# STEP 1: CREATE / LOAD VECTOR DB
-# -------------------------------
 
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+st.set_page_config(page_title="gym assistant")
+st.title("💪🏋️‍♀️ SWEAT SMART")
+st.write("Fuel your fitness journey with high-fiber foods that work as hard as you do")
 
-if not os.path.exists("faiss_index"):
-    print("🔹 Creating nutrition embeddings...")
 
-    loader = TextLoader("nutrition_data.txt")
-    documents = loader.load()
+API_URL = "http://192.168.27.162:1234/v1/chat/completions"
 
-    # Simple Python splitter as replacement for CharacterTextSplitter
-    def simple_splitter(text, chunk_size=200, overlap=20):
-        chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunks.append(text[start:end])
-            start = end - overlap
-        return chunks
+def ask_model(user_question):
+    payload = {
+        "model": "gemma",
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a gym guidance assistant. "
+                    "Give clear, simple advice about fiber-rich foods, "
+                    "pre-workout and post-workout nutrition. "
+                    "Focus on Indian vegetarian foods when possible. "
+                    "Do not give medical advice."
+                )
+            },
+            {
+                "role": "user",
+                "content": user_question
+            }
+        ],
+       
+    }
 
-    docs = []
-    for doc in documents:
-        chunks = simple_splitter(doc.page_content)
-        for chunk in chunks:
-            docs.append(doc.__class__(page_content=chunk, metadata=doc.metadata))
+    response = requests.post(API_URL, json=payload)
+    result = response.json()
+    return result["choices"][0]["message"]["content"]
 
-    vectorstore = FAISS.from_documents(docs, embeddings)
-    vectorstore.save_local("faiss_index")
 
-    print("✅ Nutrition data embedded and saved\n")
-else:
-    print("✅ Loading existing nutrition embeddings\n")
-    vectorstore = FAISS.load_local(
-        "faiss_index",
-        embeddings,
-        allow_dangerous_deserialization=True
-    )
+user_input = st.text_input("Ask your question")
 
-# -------------------------------
-# STEP 2: CONNECT TO GEMMA
-# -------------------------------
 
-llm = ChatOpenAI(
-    base_url="http://192.168.27.162:1234/v1",
-    api_key="lm-studio",
-    model="gemma-2b-it"
-)
-
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    retriever=vectorstore.as_retriever(),
-    chain_type="stuff"
-)
-
-# -------------------------------
-# STEP 3: CHAT LOOP
-# -------------------------------
-
-print("🏋️ Gym Nutrition Chatbot Ready")
-print("Type 'exit' to quit\n")
-
-while True:
-    user_input = input("You: ")
-
-    if user_input.lower() == "exit":
-        print("Bot: Stay healthy 💪")
-        break
-
-    response = qa_chain.run(user_input)
-    print("Bot:", response)
+if user_input:
+    try:
+        answer = ask_model(user_input)
+        st.success(answer)
+    except Exception as e:
+      pass
